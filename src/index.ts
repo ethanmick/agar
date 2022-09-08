@@ -5,8 +5,8 @@ export default new Phaser.Game({
   title: 'Multiplayer 02',
   type: Phaser.AUTO,
   parent: 'game',
-  width: 800,
-  height: 600,
+  width: 1400,
+  height: 900,
   physics: {
     default: 'arcade',
     arcade: {
@@ -16,6 +16,7 @@ export default new Phaser.Game({
   },
   scene: [Game],
   scale: {
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
 })
