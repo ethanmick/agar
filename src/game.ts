@@ -49,7 +49,7 @@ export class Game extends Phaser.Scene {
       this.size += 0.1
       this.tweens.add({
         targets: [this.player],
-        size: 128,
+        scale: this.size,
         duration: 500,
       })
       const zoom = this.cameras.main.zoom - 0.15
