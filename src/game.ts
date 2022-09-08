@@ -5,35 +5,45 @@ enum IMG {
 }
 
 export class Game extends Phaser.Scene {
+  player!: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
+
   constructor() {
     super('game')
   }
 
   preload() {
-    this.load.setBaseURL('http://labs.phaser.io')
-    this.load.image(IMG.SKY, 'assets/skies/space3.png')
-    this.load.image(IMG.LOGO, 'assets/sprites/phaser3-logo.png')
-    this.load.image(IMG.RED, 'assets/particles/red.png')
+    this.load.image('player', 'assets/player.png')
+    this.load.image('background', 'assets/background.png')
   }
 
   create() {
-    /* Background */
-    this.add.image(400, 300, IMG.SKY)
-    /* Particles */
-    let particles = this.add.particles(IMG.RED)
-    let emitter = particles.createEmitter({
-      speed: 100,
-      scale: { start: 1, end: 0 },
-      blendMode: 'ADD',
-    })
-    /* Logo */
-    let logo = this.physics.add.image(400, 100, IMG.LOGO)
-    logo.setVelocity(100, 200)
-    logo.setBounce(1, 1)
-    logo.setCollideWorldBounds(true)
-    /* Particles follow logo */
-    emitter.startFollow(logo)
+    const player = this.physics.add.sprite(400, 300, 'player')
+    this.player = player
+
+    const bg = this.add.image(0, 0, 'background').setOrigin(0, 0)
+    this.cameras.main.setBounds(0, 0, bg.displayWidth, bg.displayHeight)
+    this.cameras.main.startFollow(player)
+
+    const layer = this.add.layer()
+    layer.add(player)
+    layer.bringToTop(player)
   }
 
-  update(t: number, dt: number) {}
+  update(t: number, dt: number) {
+    const x = this.input.mousePointer.worldX
+    const y = this.input.mousePointer.worldY
+
+    const angle = Math.atan2(y - this.player.y, x - this.player.x)
+    const distance = Phaser.Math.Distance.Between(
+      x,
+      y,
+      this.player.x,
+      this.player.y
+    )
+    const speed = Math.min(distance / 10, 10) * dt
+    const velX = Math.cos(angle) * speed
+    const velY = Math.sin(angle) * speed
+
+    this.player.setVelocity(velX, velY)
+  }
 }

@@ -2,16 +2,15 @@ import Phaser from 'phaser'
 import { Game } from './game'
 
 export default new Phaser.Game({
-  title: 'TypeScript Start',
+  title: 'Multiplayer 02',
   type: Phaser.AUTO,
   parent: 'game',
   width: 800,
   height: 600,
   physics: {
-    // Setting the game physics.
     default: 'arcade',
     arcade: {
-      gravity: { y: 200 },
+      gravity: { y: 0 },
     },
   },
   scene: [Game],
