@@ -1,6 +1,11 @@
 import { io } from 'socket.io-client'
 import { v4 as uuid } from 'uuid'
 
+type Point = {
+  x: number
+  y: number
+}
+
 type PositionEvent = {
   id: string
   x: number
@@ -8,9 +13,11 @@ type PositionEvent = {
   size: number
 }
 
+const SCALE_FACTOR = 128
+
 class Player extends Phaser.Physics.Arcade.Sprite {
   public id: string = uuid()
-  public size: number
+  public size: number = 64
 
   public get speed(): number {
     return this.size
@@ -18,7 +25,33 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'player')
-    this.size = 0.5
+    // Required
+    scene.add.existing(this)
+    scene.physics.add.existing(this)
+
+    // Continue setup
+    this.setCircle(this.size)
+    this.scale = this.size / SCALE_FACTOR
+  }
+
+  public isEating(p: Point) {
+    return this.body.hitTest(p.x, p.y)
+  }
+
+  /**
+   * Grow after eating another entity
+   * @param amount
+   */
+  public grow(amount: number) {
+    this.size += amount
+    // Manually set for hitbox
+    this.body.radius = this.size
+    const scale = this.size / SCALE_FACTOR
+    this.scene.tweens.add({
+      targets: [this],
+      scale: scale,
+      duration: 500,
+    })
   }
 }
 
@@ -31,7 +64,7 @@ export class Game extends Phaser.Scene {
   playersLayer!: Phaser.GameObjects.Layer
   foodLayer!: Phaser.GameObjects.Layer
 
-  player!: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
+  player!: Player
   size: number = 0.5
 
   last: number = 0
@@ -51,24 +84,17 @@ export class Game extends Phaser.Scene {
 
   create() {
     this.playerGroup = this.physics.add.group()
-
-    const player = this.physics.add.sprite(
+    const player = new Player(
+      this,
       Phaser.Math.Between(0, 1024),
-      Phaser.Math.Between(0, 1024),
-      'player'
+      Phaser.Math.Between(0, 1024)
     )
-    player.setData({ id, size: 0.5 })
-    player.setOrigin(0.5, 0.5)
-    player.body.setCircle(64)
-    this.playerGroup.add(player)
-
-    player.scale = this.size
     this.player = player
+    this.playerGroup.add(player)
 
     const bg = this.add
       .grid(0, 0, 14000, 14000, 128, 128, 0xffffff, 1, 0xf5f5f5)
       .setOrigin(0, 0)
-    // const bg = this.add.image(0, 0, 'background').setOrigin(0, 0)
     this.cameras.main.setBounds(0, 0, bg.displayWidth, bg.displayHeight)
     this.cameras.main.startFollow(player, true, 0.09, 0.09)
     this.cameras.main.zoom = 2
@@ -76,28 +102,29 @@ export class Game extends Phaser.Scene {
     this.food = this.physics.add.staticGroup({})
     this.foodLayer = this.add.layer()
 
-    this.physics.add.overlap(this.player, this.food, (player, food) => {
-      if (!player.body.hitTest(food.body.center.x, food.body.center.y)) {
+    // On Food contact, Consume
+    this.physics.add.overlap(this.player, this.food, (_player, food) => {
+      // https://github.com/photonstorm/phaser/issues/5882
+      const player = _player as Player
+      if (!player.isEating(food.body.center)) {
         return
       }
 
+      // Destroy the food
       this.food.killAndHide(food)
       food.body.enable = false
-      this.size += 0.1
-      this.player.setData({ size: this.size })
-      this.tweens.add({
-        targets: [this.player],
-        scale: this.size,
-        duration: 500,
-      })
-      const zoom = this.cameras.main.zoom - 0.15
-      this.cameras.main.zoomTo(
-        Phaser.Math.Clamp(zoom, 0.5, 2),
-        1000,
-        'Cubic.easeInOut'
-      )
+      food.destroy()
+
+      // Grow
+      player.grow(2)
+
+      // Adjust zoom as needed
+      const z = 2 - 0.002 * player.size
+      const zoom = Phaser.Math.Clamp(z, 0.5, 2)
+      this.cameras.main.zoomTo(zoom, 1000, Phaser.Math.Easing.Cubic.InOut)
     })
 
+    // On other player contact, check if one eats the other.
     this.physics.add.overlap(this.playerGroup, this.playerGroup, (p1, p2) => {
       if (!p1.body.hitTest(p2.body.center.x, p2.body.center.y)) {
         return
@@ -115,6 +142,7 @@ export class Game extends Phaser.Scene {
     this.playersLayer.bringToTop(player)
     this.playersLayer.setDepth(1)
 
+    // Broadcast player position on a cadence
     this.time.addEvent({
       delay: 50,
       callback: () => {
@@ -128,6 +156,7 @@ export class Game extends Phaser.Scene {
       loop: true,
     })
 
+    // Update other players
     socket.on('position', (d: PositionEvent) => {
       const player:
         | Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
@@ -157,6 +186,7 @@ export class Game extends Phaser.Scene {
       }
     })
 
+    // You lose
     socket.on('destroyed', (remote: string) => {
       if (remote === id) {
         this.dead = true
@@ -167,13 +197,10 @@ export class Game extends Phaser.Scene {
   update(t: number, dt: number) {
     if (this.dead) {
       this.player.destroy()
-      console.log('YOU LOSE')
       return
     }
 
-    const x = this.input.mousePointer.worldX
-    const y = this.input.mousePointer.worldY
-
+    const { x, y } = this.getMouseCoords()
     const angle = Math.atan2(y - this.player.y, x - this.player.x)
     const distance = Phaser.Math.Distance.Between(
       x,
@@ -181,6 +208,8 @@ export class Game extends Phaser.Scene {
       this.player.x,
       this.player.y
     )
+    // const d = Math.min(distance / 50, 10)
+    // const speed = (20 - 0.02 * this.player.size) * d * dt
     const speed = Math.min(distance / 10, 10) * dt
     const velX = Math.cos(angle) * speed
     const velY = Math.sin(angle) * speed
@@ -199,6 +228,17 @@ export class Game extends Phaser.Scene {
       // this.foodLayer.add(food)
       this.food.add(created)
       this.last = t
+    }
+  }
+
+  // Works great!
+  getMouseCoords(): Point {
+    // Takes a Camera and updates this Pointer's worldX and worldY values so they are the result of a translation through the given Camera.
+    this.input.activePointer.updateWorldPoint(this.cameras.main)
+    const pointer = this.input.activePointer
+    return {
+      x: pointer.worldX,
+      y: pointer.worldY,
     }
   }
 }
