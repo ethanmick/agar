@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "outDir": "_dist",
+    "target": "ES2015",
+    "module": "commonjs",
+    "esModuleInterop": true, 
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+  },
+  "include": [
+    "./server/**/*"
+  ]
+}
