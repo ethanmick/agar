@@ -14,7 +14,7 @@ type PositionEvent = {
 }
 
 const socket = io(`http://localhost:9090?id=${''}`)
-const SCALE_FACTOR = 128
+const SPRITE_IMAGE_RADIUS = 64
 
 /**
  * A player is a group of orbs. The orbs are controlled all at once with the
@@ -43,9 +43,33 @@ class Player extends Phaser.Physics.Arcade.Group {
   ) {
     super(world, scene)
     this.id = uuid()
-    this.add(new Orb(scene, x, y, 64))
-    // scene.physics.add.collider(this, this)
+    this.add(new Orb(scene, x, y, 16))
+    scene.physics.add.collider(
+      this,
+      this,
+      () => {
+        console.log('Collided!')
+      },
+      (o1, o2) => {
+        const orb1 = o1 as Orb
+        const orb2 = o2 as Orb
+        return !(orb1.canReform && orb2.canReform)
+      }
+    )
+    scene.physics.add.overlap(this, this, (o1, o2) => {
+      console.log('Overlap')
+      const orb = o1 as Orb
+      if (orb.isEating(o2.body.center)) {
+        orb.grow(o2.body.radius)
+        this.killAndHide(o2)
+        o2.destroy()
+      }
+    })
     this.defaults = {} as any
+
+    this.addListener('reform', (o: Orb) => {
+      this
+    })
   }
 
   public isAlive(): boolean {
@@ -66,23 +90,14 @@ class Player extends Phaser.Physics.Arcade.Group {
 
 class Orb extends Phaser.Physics.Arcade.Sprite {
   public readonly id: string
-  public _size: number
   public spawned: boolean = false
+  public canReform: boolean = true
 
   public get speed(): number {
-    return this.size
+    return 10
   }
 
-  public set size(size: number) {
-    this._size = size
-    this.body.radius = size
-  }
-
-  public get size() {
-    return this._size
-  }
-
-  constructor(scene: Game, x: number, y: number, size: number) {
+  constructor(scene: Game, x: number, y: number, radius: number) {
     super(scene, x, y, 'player')
     this.id = uuid()
     // Required
@@ -93,9 +108,19 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     scene.layers.players.bringToTop(this)
 
     // Continue setup
-    this._size = size
-    this.setCircle(this.size)
-    this.scale = this.size / SCALE_FACTOR
+    this.scale = radius / SPRITE_IMAGE_RADIUS
+    this.setCircle(radius / this.scale)
+    this.body.radius = radius
+    this.setBounce(1, 1)
+
+    // this.emit()
+
+    this.scene.time.addEvent({
+      delay: 5 * 1000,
+      callback: () => {
+        this.canReform = true
+      },
+    })
   }
 
   public isEating(p: Point) {
@@ -108,6 +133,7 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
         return
       }
       this.spawned = false
+      this.body.checkCollision.none = false
     }
     const angle = Math.atan2(y - this.y, x - this.x)
     const distance = Phaser.Math.Distance.Between(x, y, this.x, this.y)
@@ -124,17 +150,21 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
    * @param amount
    */
   public grow(amount: number) {
-    this.size += amount
-    const scale = this.size / SCALE_FACTOR
-    this.scene.tweens.add({
-      targets: [this],
-      scale: scale,
-      duration: 500,
-    })
+    const radius = this.scale * SPRITE_IMAGE_RADIUS + amount
+    this.scale = radius / SPRITE_IMAGE_RADIUS
+    this.body.radius = radius
+
+    // this.body.radius += amount
+    // const scale = (this.body.radius * this.scale) / SPRITE_IMAGE_RADIUS
+    // this.scene.tweens.add({
+    //   targets: [this],
+    //   scale: scale,
+    //   duration: 500,
+    // })
   }
 
   public split(): Orb | undefined {
-    if (this.size < 64) {
+    if (this.body.radius < 20) {
       return
     }
     this.scene.input.activePointer.updateWorldPoint(this.scene.cameras.main)
@@ -144,19 +174,23 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     const velX = Math.cos(angle)
     const velY = Math.sin(angle)
 
-    this.size /= 2
-    const scale = this.size / SCALE_FACTOR
-    this.scene.tweens.add({
-      targets: [this],
-      scale: scale,
-      duration: 500,
-    })
+    const radius = (this.scale * SPRITE_IMAGE_RADIUS) / 2
+    this.scale = radius / SPRITE_IMAGE_RADIUS
+    this.body.radius = radius
 
-    const spawn = new Orb(this.scene as Game, this.x, this.y, this.size)
+    // this.scene.tweens.add({
+    //   targets: [this],
+    //   scale: scale,
+    //   duration: 500,
+    // })
+
+    const spawn = new Orb(this.scene as Game, this.x, this.y, this.body.radius)
     spawn.setVelocity(velX * 500, velY * 500)
     spawn.setDamping(true)
     spawn.setDrag(0.5)
     spawn.spawned = true
+    spawn.body.checkCollision.none = true
+    spawn.canReform = false
     return spawn
   }
 }
@@ -225,7 +259,7 @@ export class Game extends Phaser.Scene {
       o.grow(2)
 
       // Adjust zoom as needed
-      const z = 2 - 0.002 * o.size
+      const z = 2 - 0.002 * o.body.radius
       const zoom = Phaser.Math.Clamp(z, 0.5, 2)
       this.cameras.main.zoomTo(zoom, 1000, Phaser.Math.Easing.Cubic.InOut)
     })
@@ -303,8 +337,11 @@ export class Game extends Phaser.Scene {
     })
 
     //test
-    const o = new Orb(this, 100, 100, 128)
+    const o = new Orb(this, 100, 100, 32)
     this.add.existing(o)
+
+    const o2 = new Orb(this, 200, 200, 48)
+    this.add.existing(o2)
     //tes
   }
 
@@ -322,10 +359,9 @@ export class Game extends Phaser.Scene {
       const foodY = Phaser.Math.Between(0, 1024)
       const created: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody =
         this.food.create(foodX, foodY, `food_${i}`)
+
       created.setCircle(16)
       created.setOrigin(0.5, 0.5)
-      // const food = this.physics.add.sprite()
-      // this.foodLayer.add(food)
       this.food.add(created)
       this.last = t
     }
