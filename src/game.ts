@@ -44,6 +44,8 @@ class Player extends Phaser.Physics.Arcade.Group {
     super(world, scene)
     this.id = uuid()
     this.add(new Orb(scene, x, y, 64))
+    // scene.physics.add.collider(this, this)
+    this.defaults = {} as any
   }
 
   public isAlive(): boolean {
@@ -65,6 +67,7 @@ class Player extends Phaser.Physics.Arcade.Group {
 class Orb extends Phaser.Physics.Arcade.Sprite {
   public readonly id: string
   public _size: number
+  public spawned: boolean = false
 
   public get speed(): number {
     return this.size
@@ -90,9 +93,9 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     scene.layers.players.bringToTop(this)
 
     // Continue setup
+    this._size = size
     this.setCircle(this.size)
     this.scale = this.size / SCALE_FACTOR
-    this._size = size
   }
 
   public isEating(p: Point) {
@@ -100,6 +103,12 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
   }
 
   public moveTo(dt: number, x: number, y: number) {
+    if (this.spawned) {
+      if (this.body.velocity.length() > 200) {
+        return
+      }
+      this.spawned = false
+    }
     const angle = Math.atan2(y - this.y, x - this.x)
     const distance = Phaser.Math.Distance.Between(x, y, this.x, this.y)
     // const d = Math.min(distance / 50, 10)
@@ -140,12 +149,14 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     this.scene.tweens.add({
       targets: [this],
       scale: scale,
-      duration: 250,
+      duration: 500,
     })
 
     const spawn = new Orb(this.scene as Game, this.x, this.y, this.size)
-    spawn.setVelocity(velX * 200, velY * 200)
-    spawn.setAcceleration(-500, -500)
+    spawn.setVelocity(velX * 500, velY * 500)
+    spawn.setDamping(true)
+    spawn.setDrag(0.5)
+    spawn.spawned = true
     return spawn
   }
 }
@@ -290,6 +301,11 @@ export class Game extends Phaser.Scene {
         // this.dead = true
       }
     })
+
+    //test
+    const o = new Orb(this, 100, 100, 128)
+    this.add.existing(o)
+    //tes
   }
 
   update(t: number, dt: number) {
