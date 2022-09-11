@@ -17,10 +17,19 @@ const SCALE_FACTOR = 128
 
 class Player extends Phaser.Physics.Arcade.Sprite {
   public id: string = uuid()
-  public size: number = 64
+  public _size: number = 64
 
   public get speed(): number {
     return this.size
+  }
+
+  public set size(size: number) {
+    this._size = size
+    this.body.radius = size
+  }
+
+  public get size() {
+    return this._size
   }
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -45,7 +54,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
   public grow(amount: number) {
     this.size += amount
     // Manually set for hitbox
-    this.body.radius = this.size
+    // this.body.radius = this.size
     const scale = this.size / SCALE_FACTOR
     this.scene.tweens.add({
       targets: [this],
@@ -53,11 +62,28 @@ class Player extends Phaser.Physics.Arcade.Sprite {
       duration: 500,
     })
   }
+
+  public split() {
+    this.scene.input.activePointer.updateWorldPoint(this.scene.cameras.main)
+    const pointer = this.scene.input.activePointer
+    const { worldX: x, worldY: y } = pointer
+    const angle = Math.atan2(y - this.y, x - this.x)
+    const velX = Math.cos(angle)
+    const velY = Math.sin(angle)
+
+    this.size /= 2
+    const blob = this.scene.physics.add.sprite(this.x, this.y, 'player')
+    blob.scale = this.size / SCALE_FACTOR / 2
+    blob.setVelocity(velX * 200, velY * 200)
+    blob.setAcceleration(-100, -100)
+  }
 }
 
 const id = uuid()
 const socket = io(`http://localhost:9090?id=${id}`)
 
+////////////////////////////////////////////
+// SCENE
 export class Game extends Phaser.Scene {
   dead = false
   playerGroup!: Phaser.Physics.Arcade.Group
@@ -101,6 +127,13 @@ export class Game extends Phaser.Scene {
 
     this.food = this.physics.add.staticGroup({})
     this.foodLayer = this.add.layer()
+
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (this.player.size < 64) {
+        return
+      }
+      this.player.split()
+    })
 
     // On Food contact, Consume
     this.physics.add.overlap(this.player, this.food, (_player, food) => {
@@ -213,7 +246,6 @@ export class Game extends Phaser.Scene {
     const speed = Math.min(distance / 10, 10) * dt
     const velX = Math.cos(angle) * speed
     const velY = Math.sin(angle) * speed
-
     this.player.setVelocity(velX, velY)
 
     if (t - this.last > 1000) {
