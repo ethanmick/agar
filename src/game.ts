@@ -94,7 +94,7 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
   public canReform: boolean = true
 
   public get speed(): number {
-    return 10
+    return 14 - 0.02 * this.body.radius
   }
 
   constructor(scene: Game, x: number, y: number, radius: number) {
@@ -114,9 +114,15 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     this.setBounce(1, 1)
 
     // this.emit()
+    this.scene.time.addEvent({
+      delay: 500,
+      callback: () => {
+        this.body.checkCollision.none = false
+      },
+    })
 
     this.scene.time.addEvent({
-      delay: 5 * 1000,
+      delay: 10 * 1000,
       callback: () => {
         this.canReform = true
       },
@@ -136,12 +142,17 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
       this.body.checkCollision.none = false
     }
     const angle = Math.atan2(y - this.y, x - this.x)
-    const distance = Phaser.Math.Distance.Between(x, y, this.x, this.y)
+    const distance = Phaser.Math.Clamp(
+      Phaser.Math.Distance.Between(x, y, this.x, this.y) / 10,
+      0,
+      1
+    )
+    console.log('Distance', distance)
     // const d = Math.min(distance / 50, 10)
     // const speed = (20 - 0.02 * this.player.size) * d * dt
-    const speed = Math.min(distance / 10, 10) * dt
-    const velX = Math.cos(angle) * speed
-    const velY = Math.sin(angle) * speed
+    // const speed = Math.min(distance / 10, 10) * dt
+    const velX = Math.cos(angle) * this.speed * distance * dt
+    const velY = Math.sin(angle) * this.speed * distance * dt
     this.setVelocity(velX, velY)
   }
 
@@ -189,8 +200,8 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     spawn.setDamping(true)
     spawn.setDrag(0.5)
     spawn.spawned = true
-    spawn.body.checkCollision.none = true
     spawn.canReform = false
+    spawn.body.checkCollision.none = true
     return spawn
   }
 }
