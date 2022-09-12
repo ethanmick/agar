@@ -13,7 +13,6 @@ type PositionEvent = {
   size: number
 }
 
-const socket = io(`http://localhost:9090?id=${''}`)
 const SPRITE_IMAGE_RADIUS = 64
 
 /**
@@ -44,20 +43,12 @@ class Player extends Phaser.Physics.Arcade.Group {
     super(world, scene)
     this.id = uuid()
     this.add(new Orb(scene, x, y, 16))
-    scene.physics.add.collider(
-      this,
-      this,
-      () => {
-        console.log('Collided!')
-      },
-      (o1, o2) => {
-        const orb1 = o1 as Orb
-        const orb2 = o2 as Orb
-        return !(orb1.canReform && orb2.canReform)
-      }
-    )
+    scene.physics.add.collider(this, this, undefined, (o1, o2) => {
+      const orb1 = o1 as Orb
+      const orb2 = o2 as Orb
+      return !(orb1.canReform && orb2.canReform)
+    })
     scene.physics.add.overlap(this, this, (o1, o2) => {
-      console.log('Overlap')
       const orb = o1 as Orb
       if (orb.isEating(o2.body.center)) {
         orb.grow(o2.body.radius)
@@ -147,7 +138,6 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
       0,
       1
     )
-    console.log('Distance', distance)
     // const d = Math.min(distance / 50, 10)
     // const speed = (20 - 0.02 * this.player.size) * d * dt
     // const speed = Math.min(distance / 10, 10) * dt
@@ -158,20 +148,17 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
 
   /**
    * Grow after eating another entity
-   * @param amount
+   * @param amount the radius to grow by
    */
   public grow(amount: number) {
     const radius = this.scale * SPRITE_IMAGE_RADIUS + amount
-    this.scale = radius / SPRITE_IMAGE_RADIUS
+    const scale = radius / SPRITE_IMAGE_RADIUS
     this.body.radius = radius
-
-    // this.body.radius += amount
-    // const scale = (this.body.radius * this.scale) / SPRITE_IMAGE_RADIUS
-    // this.scene.tweens.add({
-    //   targets: [this],
-    //   scale: scale,
-    //   duration: 500,
-    // })
+    this.scene.tweens.add({
+      targets: [this],
+      scale: scale,
+      duration: 250,
+    })
   }
 
   public split(): Orb | undefined {
@@ -186,19 +173,19 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     const velY = Math.sin(angle)
 
     const radius = (this.scale * SPRITE_IMAGE_RADIUS) / 2
-    this.scale = radius / SPRITE_IMAGE_RADIUS
+    const scale = radius / SPRITE_IMAGE_RADIUS
     this.body.radius = radius
 
-    // this.scene.tweens.add({
-    //   targets: [this],
-    //   scale: scale,
-    //   duration: 500,
-    // })
+    this.scene.tweens.add({
+      targets: [this],
+      scale: scale,
+      duration: 200,
+    })
 
     const spawn = new Orb(this.scene as Game, this.x, this.y, this.body.radius)
-    spawn.setVelocity(velX * 500, velY * 500)
+    spawn.setVelocity(velX * 700, velY * 700)
     spawn.setDamping(true)
-    spawn.setDrag(0.5)
+    spawn.setDrag(0.4)
     spawn.spawned = true
     spawn.canReform = false
     spawn.body.checkCollision.none = true
@@ -211,8 +198,11 @@ type Layers = {
   players: Phaser.GameObjects.Layer
 }
 
-////////////////////////////////////////////
-// SCENE
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// SCENE ////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 export class Game extends Phaser.Scene {
   layers!: Layers
   player!: Player
@@ -231,30 +221,41 @@ export class Game extends Phaser.Scene {
   }
 
   create() {
+    // Create layers for depth layering
     this.layers = {
       food: this.add.layer(),
       players: this.add.layer(),
     }
     this.layers.players.depth = 1
+
+    // Create Player
     this.player = new Player(
       this.physics.world,
       this,
       Phaser.Math.Between(0, 1024),
       Phaser.Math.Between(0, 1024)
     )
+    this.input.keyboard.on('keydown-SPACE', () => this.player.split())
 
+    // Create Background Grid
     const bg = this.add
       .grid(0, 0, 14000, 14000, 128, 128, 0xffffff, 1, 0xf5f5f5)
       .setOrigin(0, 0)
+
+    // Setup Main Camera
     this.cameras.main.setBounds(0, 0, bg.displayWidth, bg.displayHeight)
     this.cameras.main.startFollow(this.player, true, 0.09, 0.09)
     this.cameras.main.zoom = 2
 
     this.food = this.physics.add.staticGroup({})
-    this.input.keyboard.on('keydown-SPACE', () => this.player.split())
 
-    // On Food contact, Consume
+    ///////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+    ////////////////////////////// CONSUME FOOD ///////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
     this.physics.add.overlap(this.player, this.food, (orb, food) => {
+      // We really want these arguments to be generic, but alas
       // https://github.com/photonstorm/phaser/issues/5882
       const o = orb as Orb
       if (!o.isEating(food.body.center)) {
@@ -263,9 +264,9 @@ export class Game extends Phaser.Scene {
 
       // Destroy the food
       this.food.killAndHide(food)
-      food.body.enable = false
       food.destroy()
 
+      // TODO: Give food different amounts
       // Grow
       o.grow(2)
 
@@ -274,6 +275,8 @@ export class Game extends Phaser.Scene {
       const zoom = Phaser.Math.Clamp(z, 0.5, 2)
       this.cameras.main.zoomTo(zoom, 1000, Phaser.Math.Easing.Cubic.InOut)
     })
+
+    const socket = io(`http://localhost:9090?id=${this.player.id}`)
 
     // On other player contact, check if one eats the other.
     // this.physics.add.overlap(this.playerGroup, this.playerGroup, (p1, p2) => {
@@ -287,14 +290,6 @@ export class Game extends Phaser.Scene {
     //     socket.emit('destroyed', p2.data.values.id)
     //   }
     // })
-
-    // this.playersLayer = this.add.layer()
-    // this.playersLayer.add(player)
-    // this.playersLayer.bringToTop(player)
-    // this.playersLayer.setDepth(1)
-
-    // this.layers.players.add(this.player.children)
-    // this.scene.bringToTop(this.layers.players)
 
     // // Broadcast player position on a cadence
     // this.time.addEvent({
@@ -346,16 +341,13 @@ export class Game extends Phaser.Scene {
         // this.dead = true
       }
     })
-
-    //test
-    const o = new Orb(this, 100, 100, 32)
-    this.add.existing(o)
-
-    const o2 = new Orb(this, 200, 200, 48)
-    this.add.existing(o2)
-    //tes
   }
 
+  /////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////// UPDATE ///////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////////////
   update(t: number, dt: number) {
     // if (this.dead) {
     //   this.player.destroy()
