@@ -38,9 +38,9 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('position', data)
   })
 
-  socket.on('destroyed', (id: string) => {
-    socket.broadcast.emit('destroyed', id)
-  })
+  socket.on('orb.removed', (id: string) =>
+    socket.broadcast.emit('orb.removed', id)
+  )
 
   socket.on('disconnect', (reason) => {
     console.log('Disconnected', reason)

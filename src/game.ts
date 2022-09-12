@@ -8,9 +8,12 @@ type Point = {
 
 type PositionEvent = {
   id: string
-  x: number
-  y: number
-  size: number
+  orbs: Array<{
+    id: string
+    x: number
+    y: number
+    r: number
+  }>
 }
 
 const SPRITE_IMAGE_RADIUS = 64
@@ -50,21 +53,26 @@ class Player extends Phaser.Physics.Arcade.Group {
     })
     scene.physics.add.overlap(this, this, (o1, o2) => {
       const orb = o1 as Orb
+      const orb2 = o2 as Orb
       if (orb.isEating(o2.body.center)) {
         orb.grow(o2.body.radius)
         this.killAndHide(o2)
         o2.destroy()
+        this.emit('orb.removed', orb2.id)
       }
     })
     this.defaults = {} as any
-
-    this.addListener('reform', (o: Orb) => {
-      this
-    })
   }
 
   public isAlive(): boolean {
     return this.orbs.size > 0
+  }
+
+  public removeOrb(id: string) {
+    const orb = this.orbs.get('id', id as any)
+    if (orb) {
+      this.remove(orb)
+    }
   }
 
   public split() {
@@ -94,9 +102,11 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     // Required
     scene.add.existing(this)
     scene.physics.add.existing(this)
-    // // Layers
+    // Layers
     scene.layers.players.add(this)
     scene.layers.players.bringToTop(this)
+    // Groups
+    scene.allOrbs.add(this)
 
     // Continue setup
     this.scale = radius / SPRITE_IMAGE_RADIUS
@@ -152,6 +162,13 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
    */
   public grow(amount: number) {
     const radius = this.scale * SPRITE_IMAGE_RADIUS + amount
+    this.growTo(radius)
+  }
+
+  public growTo(radius: number) {
+    if (radius === this.body.radius) {
+      return
+    }
     const scale = radius / SPRITE_IMAGE_RADIUS
     this.body.radius = radius
     this.scene.tweens.add({
@@ -193,6 +210,13 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
   }
 }
 
+class EnemyOrb extends Orb {
+  public serverPoint?: Point
+  constructor(scene: Game, x: number, y: number, radius: number) {
+    super(scene, x, y, radius)
+  }
+}
+
 type Layers = {
   food: Phaser.GameObjects.Layer
   players: Phaser.GameObjects.Layer
@@ -208,6 +232,8 @@ export class Game extends Phaser.Scene {
   player!: Player
   last: number = 0
   food!: Phaser.Physics.Arcade.StaticGroup
+  orbs: Record<string, EnemyOrb> = {}
+  allOrbs!: Phaser.Physics.Arcade.Group
 
   constructor() {
     super('agar')
@@ -221,6 +247,8 @@ export class Game extends Phaser.Scene {
   }
 
   create() {
+    this.allOrbs = this.physics.add.group()
+
     // Create layers for depth layering
     this.layers = {
       food: this.add.layer(),
@@ -279,66 +307,61 @@ export class Game extends Phaser.Scene {
     const socket = io(`http://localhost:9090?id=${this.player.id}`)
 
     // On other player contact, check if one eats the other.
-    // this.physics.add.overlap(this.playerGroup, this.playerGroup, (p1, p2) => {
-    //   if (!p1.body.hitTest(p2.body.center.x, p2.body.center.y)) {
-    //     return
-    //   }
-    //   if (p1.data.values.size > p2.data.values.size * 1.2) {
-    //     this.playerGroup.killAndHide(p2)
-    //     p2.body.enable = false
-    //     // p2.destroy()
-    //     socket.emit('destroyed', p2.data.values.id)
-    //   }
-    // })
-
-    // // Broadcast player position on a cadence
-    // this.time.addEvent({
-    //   delay: 50,
-    //   callback: () => {
-    //     socket.emit('position', {
-    //       id,
-    //       x: this.player.x,
-    //       y: this.player.y,
-    //       size: this.size,
-    //     })
-    //   },
-    //   loop: true,
-    // })
-
-    // Update other players
-    socket.on('position', (d: PositionEvent) => {
-      const player:
-        | Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
-        | undefined = this.layers.players
-        .getChildren()
-        .find(
-          (go) => go.data.values.id === d.id
-        ) as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
-
-      if (!player) {
-        const player = this.physics.add.sprite(d.x, d.y, 'player')
-        player.setData({ id: d.id, size: d.size })
-        player.setOrigin(0.5, 0.5)
-        player.body.setCircle(64)
-        this.layers.players.add(player)
-        // this.playerGroup.add(player)
+    this.physics.add.overlap(this.allOrbs, this.allOrbs, (p1, p2) => {
+      const orb1 = p1 as Orb
+      const orb2 = p2 as Orb
+      if (!orb1.isEating(orb2.body.center)) {
         return
       }
-      player.setPosition(d.x, d.y)
-      if (player.data.values.size != d.size) {
-        player.setData({ size: d.size })
-        this.tweens.add({
-          targets: [player],
-          scale: d.size,
-          duration: 500,
-        })
+      if (orb1.body.radius > orb2.body.radius * 1.2) {
+        this.allOrbs.killAndHide(orb2)
+        orb2.destroy()
+        socket.emit('orb.removed', orb2.id)
       }
     })
 
-    // You lose
-    socket.on('destroyed', (remote: string) => {
-      if (remote === this.player.id) {
-        // this.dead = true
+    // // Broadcast player position on a cadence
+    this.time.addEvent({
+      delay: 50,
+      callback: () => {
+        const p: PositionEvent = {
+          id: this.player.id,
+          orbs: this.player.orbs.entries.map((o) => ({
+            id: o.id,
+            x: o.x,
+            y: o.y,
+            r: o.body.radius,
+          })),
+        }
+        socket.emit('position', p)
+      },
+      loop: true,
+    })
+
+    this.player.on('orb.removed', (id: string) => {
+      socket.emit('orb.removed', id)
+    })
+
+    // Update other players
+    socket.on('position', (d: PositionEvent) => {
+      for (const o of d.orbs) {
+        let orb = this.orbs[o.id]
+        if (!orb) {
+          orb = new EnemyOrb(this, o.x, o.y, o.r)
+          this.orbs[o.id] = orb
+        }
+        orb.serverPoint = { x: o.x, y: o.y }
+        orb.growTo(o.r)
+      }
+    })
+
+    socket.on('orb.removed', (id: string) => {
+      const orb = this.orbs[id]
+      this.player.removeOrb(id)
+      if (orb) {
+        this.layers.players.remove(orb)
+        orb.destroy()
+        delete this.orbs[id]
       }
     })
   }
@@ -349,12 +372,20 @@ export class Game extends Phaser.Scene {
   /////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////
   update(t: number, dt: number) {
-    // if (this.dead) {
-    //   this.player.destroy()
-    //   return
-    // }
+    if (!this.player.isAlive()) {
+      // go to lose scene
+      return
+    }
     const { x, y } = this.getMouseCoords()
     this.player.moveTo(dt, x, y)
+
+    // Update enemy positions
+    for (const o in this.orbs) {
+      const orb = this.orbs[o]
+      if (!orb.serverPoint) continue
+      orb.x = Phaser.Math.Linear(orb.x, orb.serverPoint.x, 0.2)
+      orb.y = Phaser.Math.Linear(orb.y, orb.serverPoint.y, 0.2)
+    }
 
     if (t - this.last > 1000) {
       const i = Phaser.Math.Between(1, 9)
