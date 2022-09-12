@@ -260,14 +260,14 @@ export class Game extends Phaser.Scene {
     this.player = new Player(
       this.physics.world,
       this,
-      Phaser.Math.Between(0, 1024),
-      Phaser.Math.Between(0, 1024)
+      Phaser.Math.Between(0, 2048),
+      Phaser.Math.Between(0, 2048)
     )
     this.input.keyboard.on('keydown-SPACE', () => this.player.split())
 
     // Create Background Grid
     const bg = this.add
-      .grid(0, 0, 14000, 14000, 128, 128, 0xffffff, 1, 0xf5f5f5)
+      .grid(0, 0, 2048, 2048, 128, 128, 0xffffff, 1, 0xf5f5f5)
       .setOrigin(0, 0)
 
     // Setup Main Camera
@@ -389,8 +389,8 @@ export class Game extends Phaser.Scene {
 
     if (t - this.last > 1000) {
       const i = Phaser.Math.Between(1, 9)
-      const foodX = Phaser.Math.Between(0, 1024)
-      const foodY = Phaser.Math.Between(0, 1024)
+      const foodX = Phaser.Math.Between(0, 2048)
+      const foodY = Phaser.Math.Between(0, 2048)
       const created: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody =
         this.food.create(foodX, foodY, `food_${i}`)
 

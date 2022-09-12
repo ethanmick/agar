@@ -1,5 +1,15 @@
+import cors from 'cors'
+import express from 'express'
+import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { parse } from 'url'
+
+const app = express()
+const httpServer = createServer(app)
+const io = new Server(httpServer, {})
+
+app.use(cors())
+app.use(express.static('public'))
 
 type Player = {
   id: string
@@ -13,14 +23,6 @@ type PositionEvent = {
 }
 
 const players: Record<string, Player> = {}
-
-const io = new Server({
-  cors: {
-    origin: '*',
-    allowedHeaders: '*',
-    credentials: true,
-  },
-})
 
 io.on('connection', (socket) => {
   const reqUrl = socket.request.url
@@ -47,4 +49,4 @@ io.on('connection', (socket) => {
   })
 })
 
-io.listen(9090)
+httpServer.listen(3000, () => console.log('Running'))
