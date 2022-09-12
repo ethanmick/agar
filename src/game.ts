@@ -94,7 +94,7 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
   public canReform: boolean = true
 
   public get speed(): number {
-    return 14 - 0.02 * this.body.radius
+    return 16 - 0.05 * this.body.radius
   }
 
   constructor(scene: Game, x: number, y: number, radius: number) {
@@ -115,7 +115,7 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
 
     // this.emit()
     this.scene.time.addEvent({
-      delay: 500,
+      delay: 200,
       callback: () => {
         this.body.checkCollision.none = false
       },
@@ -143,7 +143,7 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
     }
     const angle = Math.atan2(y - this.y, x - this.x)
     const distance = Phaser.Math.Clamp(
-      Phaser.Math.Distance.Between(x, y, this.x, this.y) / 10,
+      Phaser.Math.Distance.Between(x, y, this.x, this.y) / 100,
       0,
       1
     )
