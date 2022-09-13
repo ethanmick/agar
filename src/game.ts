@@ -116,7 +116,7 @@ class Orb extends Phaser.Physics.Arcade.Sprite {
 
     // this.emit()
     this.scene.time.addEvent({
-      delay: 200,
+      delay: 300,
       callback: () => {
         this.body.checkCollision.none = false
       },
