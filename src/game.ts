@@ -304,7 +304,7 @@ export class Game extends Phaser.Scene {
       this.cameras.main.zoomTo(zoom, 1000, Phaser.Math.Easing.Cubic.InOut)
     })
 
-    const socket = io(`http://localhost:9090?id=${this.player.id}`)
+    const socket = io(`http://159.65.41.85:3000/?id=${this.player.id}`)
 
     // On other player contact, check if one eats the other.
     this.physics.add.overlap(this.allOrbs, this.allOrbs, (p1, p2) => {
