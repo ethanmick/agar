@@ -316,6 +316,7 @@ export class Game extends Phaser.Scene {
       if (orb1.body.radius > orb2.body.radius * 1.2) {
         this.allOrbs.killAndHide(orb2)
         orb2.destroy()
+        orb1.grow(orb2.body.radius)
         socket.emit('orb.removed', orb2.id)
       }
     })
